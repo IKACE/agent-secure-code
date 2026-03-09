@@ -1,3 +1,4 @@
 [submodule "vulnhalla"]
 	path = vulnhalla
-	url = git@github.com:cyberark/Vulnhalla.git
+	url = git@github.com:efeslab/Vulnhalla.git
+	branch = python-js
