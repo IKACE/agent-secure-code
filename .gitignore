@@ -43,3 +43,4 @@ dataset/data/
 rl/data/
 rl/outputs/
 rl/checkpoints/
+*.log
