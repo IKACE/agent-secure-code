@@ -39,3 +39,7 @@ Thumbs.db
 
 # Dataset
 dataset/data/
+# RL
+rl/data/
+rl/outputs/
+rl/checkpoints/
