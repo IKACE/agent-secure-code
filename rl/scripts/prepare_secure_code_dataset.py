@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import random
 import re
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
@@ -80,6 +82,88 @@ def load_tasks(tasks_dir: Path) -> list[dict]:
     return tasks
 
 
+def _read_standalone(task_dir: Path) -> str:
+    """Read the standalone (vulnerable) code file for a task."""
+    for name in ("standalone.js", "standalone.py", "standalone.ts"):
+        p = task_dir / name
+        if p.exists():
+            return p.read_text()
+    return ""
+
+
+def deduplicate(tasks: list[dict], similarity_threshold: float = 0.85) -> list[dict]:
+    """Remove duplicate/near-duplicate tasks.
+
+    Two dedup passes:
+      1. Exact: same repo + sha + vuln_type + function + line → keep first only.
+      2. Near: within same repo + sha + function, if standalone code similarity
+         >= threshold, keep first only.
+    """
+    # --- Pass 1: exact metadata duplicates (path normalization issues) ---
+    seen_exact: set[tuple] = set()
+    after_exact = []
+    exact_skipped = 0
+    for t in tasks:
+        task_dir = Path(t["task_dir"])
+        tj_path = task_dir / "task.json"
+        if tj_path.exists():
+            tj = json.loads(tj_path.read_text())
+            key = (
+                tj.get("repo", ""),
+                tj.get("sha", ""),
+                tj.get("vuln_type", ""),
+                tj.get("vuln_function_name", ""),
+                str(tj.get("vuln_line", "")),
+            )
+        else:
+            key = (t["task_id"],)
+
+        if key in seen_exact:
+            exact_skipped += 1
+            continue
+        seen_exact.add(key)
+        after_exact.append(t)
+
+    # --- Pass 2: near-duplicate standalone code within same function group ---
+    by_group: dict[tuple, list[dict]] = defaultdict(list)
+    for t in after_exact:
+        task_dir = Path(t["task_dir"])
+        tj_path = task_dir / "task.json"
+        if tj_path.exists():
+            tj = json.loads(tj_path.read_text())
+            gkey = (tj.get("repo", ""), tj.get("sha", ""), tj.get("vuln_function_name", ""))
+        else:
+            gkey = (t["task_id"],)
+        by_group[gkey].append(t)
+
+    near_skipped = 0
+    kept = []
+    for gkey, group in by_group.items():
+        if len(group) < 2:
+            kept.extend(group)
+            continue
+        # Read standalone code for each
+        codes = [_read_standalone(Path(t["task_dir"])) for t in group]
+        kept_indices = [0]
+        for i in range(1, len(group)):
+            is_dup = False
+            if codes[i]:
+                for ki in kept_indices:
+                    if codes[ki] and difflib.SequenceMatcher(None, codes[i], codes[ki]).ratio() >= similarity_threshold:
+                        is_dup = True
+                        break
+            if is_dup:
+                near_skipped += 1
+            else:
+                kept_indices.append(i)
+        kept.extend(group[i] for i in kept_indices)
+
+    if exact_skipped or near_skipped:
+        print(f"Dedup: skipped {exact_skipped} exact duplicates, {near_skipped} near-duplicates")
+
+    return kept
+
+
 def convert_rows(tasks: list[dict], split: str) -> pd.DataFrame:
     records = []
     for t in tasks:
@@ -107,10 +191,17 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR_DEFAULT)
     parser.add_argument("--train-ratio", type=float, default=0.85)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--no-dedup", action="store_true", help="Skip deduplication")
+    parser.add_argument("--dedup-threshold", type=float, default=0.85,
+                        help="Similarity threshold for near-duplicate detection (default: 0.85)")
     args = parser.parse_args()
 
     tasks = load_tasks(args.tasks_dir)
     print(f"Loaded {len(tasks)} tasks from {args.tasks_dir}")
+
+    if not args.no_dedup:
+        tasks = deduplicate(tasks, similarity_threshold=args.dedup_threshold)
+        print(f"After dedup: {len(tasks)} tasks")
 
     lang_counts = {}
     for t in tasks:

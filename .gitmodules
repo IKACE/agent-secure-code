@@ -2,3 +2,6 @@
 	path = vulnhalla
 	url = git@github.com:efeslab/Vulnhalla.git
 	branch = python-js
+[submodule "dataset/data/cve_factory"]
+	path = dataset/data/cve_factory
+	url = https://github.com/livecvebench/CVE-Factory.git

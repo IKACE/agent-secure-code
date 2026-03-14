@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 EXTRA_ARGS=("$@")
 
-MODEL_PATH="${MODEL_PATH:-Qwen/Qwen2.5-Coder-0.5B}"
+MODEL_PATH="${MODEL_PATH:-,}"
 TRAIN_FILE="${TRAIN_FILE:-data/humaneval/train.parquet}"
 VAL_FILE="${VAL_FILE:-data/humaneval/val.parquet}"
 N_GPUS="${N_GPUS:-1}"
